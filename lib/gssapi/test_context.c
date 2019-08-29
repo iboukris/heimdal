@@ -619,6 +619,8 @@ main(int argc, char **argv)
     gss_OID_set mechoids = GSS_C_NO_OID_SET;
     gss_key_value_element_desc client_cred_elements[2];
     gss_key_value_set_desc client_cred_store;
+    gss_key_value_element_desc acceptor_cred_elements[1];
+    gss_key_value_set_desc acceptor_cred_store;
 
     setprogname(argv[0]);
 
@@ -694,13 +696,29 @@ main(int argc, char **argv)
                        oids, sizeof(oids)/sizeof(oids[0]), mechs_string);
     }
 
+    acceptor_cred_store.count = 0;
+    acceptor_cred_store.elements = acceptor_cred_elements;
+
     if (gsskrb5_acceptor_identity) {
-	/* XXX replace this with cred store, but test suites will need work */
-	maj_stat = gsskrb5_register_acceptor_identity(gsskrb5_acceptor_identity);
-	if (maj_stat)
-	    errx(1, "gsskrb5_acceptor_identity: %s",
-		 gssapi_err(maj_stat, 0, GSS_C_NO_OID));
+	acceptor_cred_store.elements[acceptor_cred_store.count].key = "keytab";
+	acceptor_cred_store.elements[acceptor_cred_store.count].value = gsskrb5_acceptor_identity;
+
+	acceptor_cred_store.count++;
     }
+
+    maj_stat = gss_acquire_cred_from(&min_stat,
+				     NULL,
+				     GSS_C_INDEFINITE,
+				     mechoids,
+				     GSS_C_INITIATE,
+				     acceptor_cred_store.count ? &acceptor_cred_store
+							 : GSS_C_NO_CRED_STORE,
+				     &acceptor_cred,
+				     NULL,
+				     NULL);
+    if (GSS_ERROR(maj_stat))
+	errx(1, "gss_acquire_cred(acceptor): %s",
+	     gssapi_err(maj_stat, min_stat, GSS_C_NO_OID));
 
     if (client_password && (client_ccache || client_keytab)) {
 	errx(1, "password option mutually exclusive with ccache or keytab option");
