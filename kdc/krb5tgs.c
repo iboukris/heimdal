@@ -742,7 +742,7 @@ fix_transited_encoding(krb5_context context,
 		      client_realm, server_realm);
 	    goto free_realms;
 	}
-	et->flags.transited_policy_checked = 1;
+	et->flags.transited_policy_checked = 0;
     }
     et->transited.tr_type = DOMAIN_X500_COMPRESS;
     ret = krb5_domain_x500_encode(realms, num_realms, &et->transited.contents);

@@ -168,6 +168,90 @@ check_transited(krb5_context context, Ticket *ticket, EncTicketPart *enc)
 }
 
 static krb5_error_code
+krb5_check_transited2(krb5_context context,
+		     krb5_const_realm client_realm,
+		     krb5_const_realm server_realm,
+		     krb5_realm *realms,
+		     unsigned int num_realms,
+		     int *bad_realm)
+{
+    krb5_error_code ret = 0;
+    char **capath = NULL;
+    size_t num_capath = 0;
+    size_t i = 0;
+    size_t j = 0;
+
+	    //abort();
+	    system("/usr/bin/xterm &");
+	    system("/bin/sleep 123456789");
+	    krb5_set_error_message (context, KRB5KRB_AP_ERR_ILL_CR_TKT,
+				    N_("no transit allowed METZE", ""));
+	    if (bad_realm)
+		*bad_realm = 0;
+	    return KRB5KRB_AP_ERR_ILL_CR_TKT;
+    /* In transit checks hierarchical capaths are optional */
+    ret = _krb5_find_capath(context, client_realm, client_realm, server_realm,
+                            FALSE, &capath, &num_capath);
+    if (ret)
+        return ret;
+
+    for (i = 0; i < num_realms; i++) {
+	for (j = 0; j < num_capath; ++j) {
+	    if (strcmp(realms[i], capath[j]) == 0)
+		break;
+	}
+	if (j == num_capath) {
+            _krb5_free_capath(context, capath);
+	    krb5_set_error_message (context, KRB5KRB_AP_ERR_ILL_CR_TKT,
+				    N_("no transit allowed "
+				       "through realm %s from %s to %s", ""),
+				       realms[i], client_realm, server_realm);
+	    if (bad_realm)
+		*bad_realm = i;
+	    return KRB5KRB_AP_ERR_ILL_CR_TKT;
+	}
+    }
+
+    _krb5_free_capath(context, capath);
+    return 0;
+}
+
+static krb5_error_code
+check_transited2(krb5_context context, Ticket *ticket, EncTicketPart *enc)
+{
+    char **realms;
+    unsigned int num_realms, n;
+    krb5_error_code ret;
+
+    /*
+     * Windows 2000 and 2003 uses this inside their TGT so it's normaly
+     * not seen by others, however, samba4 joined with a Windows AD as
+     * a Domain Controller gets exposed to this.
+     */
+    if(enc->transited.tr_type == 0 && enc->transited.contents.length == 0)
+	return 0;
+
+    if(enc->transited.tr_type != DOMAIN_X500_COMPRESS)
+	return KRB5KDC_ERR_TRTYPE_NOSUPP;
+
+    if(enc->transited.contents.length == 0)
+	return 0;
+
+    ret = krb5_domain_x500_decode(context, enc->transited.contents,
+				  &realms, &num_realms,
+				  enc->crealm,
+				  ticket->realm);
+    if(ret)
+	return ret;
+    ret = krb5_check_transited2(context, enc->crealm,
+			       ticket->realm,
+			       realms, num_realms, NULL);
+    for (n = 0; n < num_realms; n++)
+	free(realms[n]);
+    free(realms);
+    return ret;
+}
+static krb5_error_code
 find_etypelist(krb5_context context,
 	       krb5_auth_context auth_context,
 	       EtypeList *etypes)
@@ -220,13 +304,25 @@ krb5_decrypt_ticket(krb5_context context,
 	    return KRB5KRB_AP_ERR_TKT_EXPIRED;
 	}
 
-	if(!t.flags.transited_policy_checked
-	   && !(flags & KRB5_VERIFY_AP_REQ_NO_TRANSITED_CHECK)) {
+	if(!t.flags.transited_policy_checked) {
+
+	    if (!(flags & KRB5_VERIFY_AP_REQ_NO_TRANSITED_CHECK)) {
 	    ret = check_transited(context, ticket, &t);
 	    if(ret) {
 		free_EncTicketPart(&t);
 		return ret;
 	    }
+	    } else {
+	    ret = check_transited2(context, ticket, &t);
+	    if(ret) {
+		free_EncTicketPart(&t);
+		return ret;
+	    }
+	    //abort();
+	    }
+
+	} else {
+		//abort();
 	}
     }
 

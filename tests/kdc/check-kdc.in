@@ -99,6 +99,8 @@ kdestroy="${kdestroy} -c $cache ${afs_no_unlog}"
 kimpersonate="${kimpersonate} -k ${keytab} --ccache=${ocache}"
 test_set_kvno0="${test_set_kvno0} -c $cache"
 
+context="${TESTS_ENVIRONMENT} ../../lib/gssapi/test_context"
+
 rm -f ${keytabfile}
 rm -f current-db*
 rm -f out-*
@@ -402,8 +404,15 @@ echo "Getting x-realm tickets with capaths for $R -> $R7"
 ${kgetcred} foo@${R7} || { ec=1 ; eval "${testfailed}"; }
 echo "Should not get x-realm tickets with capaths for $R -> $R8"
 ${kgetcred} foo@${R8} && { ec=1 ; eval "${testfailed}"; }
+
+${klist} && { eval "$testfailed"; }
+echo "Testing x-realm context with capaths for $R -> $R7"
+${context} --mech-type=krb5 foo@${R2} || { eval "$testfailed"; }
+
 ${kdestroy}
 
+# gss_acquire_cred_with_password() must not have side-effects
+${klist} && { eval "$testfailed"; }
 echo "Testing capaths logic (reverse order)"
 ${kinit} --password-file=${objdir}/foopassword \
     -e ${aesenctype} -e ${aesenctype} \

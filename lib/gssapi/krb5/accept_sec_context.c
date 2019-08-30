@@ -427,6 +427,7 @@ gsskrb5_acceptor_start(OM_uint32 * minor_status,
 	    }
 	}
 
+		verify_ap_req_flags |= KRB5_VERIFY_AP_REQ_NO_TRANSITED_CHECK;
 	kret = krb5_rd_req_in_ctx_alloc(context, &in);
 	if (kret == 0)
 	    kret = krb5_rd_req_in_set_keytab(context, in, keytab);
