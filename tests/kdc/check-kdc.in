@@ -405,9 +405,11 @@ ${kgetcred} foo@${R7} || { ec=1 ; eval "${testfailed}"; }
 echo "Should not get x-realm tickets with capaths for $R -> $R8"
 ${kgetcred} foo@${R8} && { ec=1 ; eval "${testfailed}"; }
 
-${klist} && { eval "$testfailed"; }
+#${klist} && { eval "$testfailed"; }
 echo "Testing x-realm context with capaths for $R -> $R7"
-${context} --mech-type=krb5 foo@${R2} || { eval "$testfailed"; }
+${kadmin} ext -k ${keytab} foo@${R7} || exit 1
+${context} -v --gsskrb5-acceptor-identity=$keytabfile --client-keytab=$keytabfile --client-ccache=$cache --client-name=foo --name-type=krb5-principal-name --mech-type=krb5 foo@${R7} || { eval "$testfailed"; }
+#${context} --mech-type=krb5 foo@${R2} || { eval "$testfailed"; }
 
 ${kdestroy}
 

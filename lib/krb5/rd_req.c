@@ -181,9 +181,9 @@ krb5_check_transited2(krb5_context context,
     size_t i = 0;
     size_t j = 0;
 
-	    //abort();
-	    system("/usr/bin/xterm &");
-	    system("/bin/sleep 123456789");
+	    abort();
+	    //system("/usr/bin/xterm &");
+	    //system("/bin/sleep 123456789");
 	    krb5_set_error_message (context, KRB5KRB_AP_ERR_ILL_CR_TKT,
 				    N_("no transit allowed METZE", ""));
 	    if (bad_realm)
@@ -313,16 +313,14 @@ krb5_decrypt_ticket(krb5_context context,
 		return ret;
 	    }
 	    } else {
+
 	    ret = check_transited2(context, ticket, &t);
 	    if(ret) {
 		free_EncTicketPart(&t);
 		return ret;
 	    }
-	    //abort();
 	    }
 
-	} else {
-		//abort();
 	}
     }
 
