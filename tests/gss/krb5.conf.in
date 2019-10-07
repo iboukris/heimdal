@@ -18,6 +18,7 @@ include @srcdirabs@/include-krb5.conf
 	}
 
 [kdc]
+	transited-policy = always-disabled
 	database = {
 		dbname = @objdir@/current-db
 		realm = TEST.H5L.SE

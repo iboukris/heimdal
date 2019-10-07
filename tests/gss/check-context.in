@@ -239,7 +239,10 @@ ${context}  --no-dns-canon --name-type=krb5-principal-name host/lucid || \
 	{ eval "$testfailed"; }
 
 echo "======test cross realm"
-${context} host@srv.test4.h5l.se || { eval "$testfailed"; }
+${context} --gsskrb5-acceptor-identity=$keytabfile \
+	host@srv.test4.h5l.se && { eval "$testfailed"; }
+${context} --gsskrb5-acceptor-identity=$keytabfile --acceptor-no-transit-check \
+	host@srv.test4.h5l.se || { eval "$testfailed"; }
 
 echo "======test context building"
 for mech in krb5 krb5iov spnego spnegoiov; do
