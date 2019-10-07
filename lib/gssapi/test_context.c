@@ -699,40 +699,40 @@ main(int argc, char **argv)
                        oids, sizeof(oids)/sizeof(oids[0]), mechs_string);
     }
 
-    acceptor_cred_store.count = 0;
-    acceptor_cred_store.elements = acceptor_cred_elements;
 
     if (gsskrb5_acceptor_identity) {
-	acceptor_cred_store.elements[acceptor_cred_store.count].key = "keytab";
-	acceptor_cred_store.elements[acceptor_cred_store.count].value = gsskrb5_acceptor_identity;
+	acceptor_cred_store.count = 1;
+	acceptor_cred_store.elements = acceptor_cred_elements;
 
-	acceptor_cred_store.count++;
-    }
+	acceptor_cred_store.elements[0].key = "keytab";
+	acceptor_cred_store.elements[0].value = gsskrb5_acceptor_identity;
 
-    maj_stat = gss_acquire_cred_from(&min_stat,
-				     NULL,
-				     GSS_C_INDEFINITE,
-				     mechoids,
-				     GSS_C_INITIATE,
-				     acceptor_cred_store.count ? &acceptor_cred_store
-							 : GSS_C_NO_CRED_STORE,
-				     &acceptor_cred,
-				     NULL,
-				     NULL);
-    if (GSS_ERROR(maj_stat))
-	errx(1, "gss_acquire_cred(acceptor): %s",
-	     gssapi_err(maj_stat, min_stat, GSS_C_NO_OID));
-
-    if (acceptor_no_transit_check) {
-	gss_buffer_desc empty_buffer = GSS_C_EMPTY_BUFFER;
-
-	maj_stat = gss_set_cred_option(&min_stat,
-				       &acceptor_cred,
-				       (gss_OID)GSS_KRB5_CRED_NO_TRANSIT_CHECK_X,
-				       &empty_buffer);
+	maj_stat = gss_acquire_cred_from(&min_stat,
+					 NULL,
+					 GSS_C_INDEFINITE,
+					 mechoids,
+					 GSS_C_ACCEPT,
+					 &acceptor_cred_store,
+					 &acceptor_cred,
+					 NULL,
+					 NULL);
 	if (GSS_ERROR(maj_stat))
-	    errx(1, "gss_set_cred_option(GSS_KRB5_CRED_NO_TRANSIT_CHECK_X): %s",
-		 gssapi_err(maj_stat, min_stat, GSS_C_NO_OID));
+	    errx(1, "gss_acquire_cred(acceptor): %s",
+	         gssapi_err(maj_stat, min_stat, GSS_C_NO_OID));
+
+	if (acceptor_no_transit_check) {
+	    gss_buffer_desc empty_buffer = GSS_C_EMPTY_BUFFER;
+
+	    maj_stat = gss_set_cred_option(&min_stat,
+					   &acceptor_cred,
+					   (gss_OID)GSS_KRB5_CRED_NO_TRANSIT_CHECK_X,
+					   &empty_buffer);
+	    if (GSS_ERROR(maj_stat))
+		errx(1, "gss_set_cred_option(GSS_KRB5_CRED_NO_TRANSIT_CHECK_X): %s",
+		     gssapi_err(maj_stat, min_stat, GSS_C_NO_OID));
+	}
+    } else if (acceptor_no_transit_check) {
+	errx(1, "acceptor_no_transit_check requires gsskrb5_acceptor_identity option");
     }
 
     if (client_password && (client_ccache || client_keytab)) {
