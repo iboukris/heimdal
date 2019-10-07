@@ -7,6 +7,15 @@ include @srcdirabs@/include-krb5.conf
 	TEST.H5L.SE = {
 		kdc = localhost:@port@
 	}
+	TEST2.H5L.SE = {
+		kdc = localhost:@port@
+	}
+	TEST3.H5L.SE = {
+		kdc = localhost:@port@
+	}
+	TEST4.H5L.SE = {
+		kdc = localhost:@port@
+	}
 
 [kdc]
 	database = {
