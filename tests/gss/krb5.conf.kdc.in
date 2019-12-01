@@ -1,4 +1,4 @@
-include @srcdirabs@/krb5.conf
+include @objdirabs@/krb5.conf
 
 # The capaths section should be private to
 # the kdc, clients should just use referrals

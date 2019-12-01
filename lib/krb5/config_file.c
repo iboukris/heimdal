@@ -388,6 +388,10 @@ krb5_config_parse_debug (struct fileptr *f,
     krb5_config_binding *b = NULL;
     char buf[KRB5_BUFSIZ];
     krb5_error_code ret;
+    const char *include_err;
+
+    include_err = "Configuration include path must be absolute";
+    *err_message = "krb5_config_parse_debug: generic error";
 
     while (config_fgets(buf, sizeof(buf), f) != NULL) {
 	char *p;
@@ -413,9 +417,8 @@ krb5_config_parse_debug (struct fileptr *f,
             while (isspace(*p))
                 p++;
             if (!is_absolute_path(p)) {
-                krb5_set_error_message(f->context, EINVAL,
-                                       "Configuration include path must be "
-                                       "absolute");
+		*err_message = include_err;
+                krb5_set_error_message(f->context, EINVAL, include_err);
                 return EINVAL;
             }
             ret = krb5_config_parse_file_multi(f->context, p, res);
@@ -427,9 +430,8 @@ krb5_config_parse_debug (struct fileptr *f,
             while (isspace(*p))
                 p++;
             if (!is_absolute_path(p)) {
-                krb5_set_error_message(f->context, EINVAL,
-                                       "Configuration includedir path must be "
-                                       "absolute");
+		*err_message = include_err;
+                krb5_set_error_message(f->context, EINVAL, include_err);
                 return EINVAL;
             }
             ret = krb5_config_parse_dir_multi(f->context, p, res);

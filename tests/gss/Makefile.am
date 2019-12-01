@@ -12,12 +12,14 @@ check_SCRIPTS = $(SCRIPT_TESTS)
 
 port = 49188
 
-do_subst = srcdirabs=`cd "$(srcdir)"; pwd`; sed \
+do_subst = srcdirabs=`cd "$(srcdir)"; pwd`; \
+	objdirabs=`pwd`; sed \
 	-e 's,[@]srcdir[@],$(srcdir),g' \
 	-e "s,[@]srcdirabs[@],$${srcdirabs},g" \
 	-e 's,[@]env_setup[@],$(top_builddir)/tests/bin/setup-env,g' \
 	-e 's,[@]port[@],$(port),g' \
-	-e 's,[@]objdir[@],$(top_builddir)/tests/gss,g'
+	-e 's,[@]objdir[@],$(top_builddir)/tests/gss,g' \
+	-e "s,[@]objdirabs[@],$${objdirabs},g"
 
 check-gss: check-gss.in Makefile
 	$(do_subst) < $(srcdir)/check-gss.in > check-gss.tmp && \
