@@ -60,6 +60,7 @@ check_PAC(krb5_context context,
 	  hdb_entry_ex *server,
 	  hdb_entry_ex *krbtgt,
 	  const EncryptionKey *server_check_key,
+	  const EncryptionKey *krbtgt_check_key,
 	  EncTicketPart *tkt,
 	  krb5_pac *ppac,
 	  int *signedpath)
@@ -115,6 +116,16 @@ check_PAC(krb5_context context,
 		if (ret) {
 		    krb5_pac_free(context, pac);
 		    return ret;
+		}
+
+		/* XXX: Try to verify the KDC signature if the plugin did not. */
+		if (!signed_pac) {
+		    ret = krb5_pac_verify(context, pac, tkt->authtime,
+					  client_principal, server_check_key,
+					  krbtgt_check_key);
+		    if (ret == 0)
+			signed_pac = 1;
+		    ret = 0;
 		}
 
 		/*
@@ -1814,6 +1825,7 @@ server_lookup:
     ret = check_PAC(context, config, cp, NULL,
 		    client, server, krbtgt,
 		    &tkey_check->key,
+		    &tkey_check->key,
 		    tgt, &mspac, &signedpath);
     if (ret) {
 	const char *msg = krb5_get_error_message(context, ret);
@@ -1985,6 +1997,11 @@ server_lookup:
 			    tpn);
 		    goto out;
 		}
+		if (mspac == NULL) {
+		    ret = krb5_pac_init(context, &mspac);
+		    if (ret)
+			goto out;
+		}
 	    }
 
 	    /*
@@ -2125,14 +2142,12 @@ server_lookup:
 	mspac = NULL;
 
 	/*
-	 * generate the PAC for the user.
-	 *
 	 * TODO: pass in t->sname and t->realm and build
 	 * a S4U_DELEGATION_INFO blob to the PAC.
 	 */
 	ret = check_PAC(context, config, tp, dp,
 			client, server, krbtgt,
-			&clientkey->key,
+			&clientkey->key, &tkey_check->key, // XXX
 			&adtkt, &mspac, &ad_signedpath);
 	if (ret) {
 	    const char *msg = krb5_get_error_message(context, ret);
@@ -2149,7 +2164,7 @@ server_lookup:
 	if (!ad_signedpath) {
 	    ret = KRB5KDC_ERR_BADOPTION;
 	    kdc_log(context, config, 4,
-		    "Ticket not signed with PAC nor SignedPath service %s failed "
+		    "Ticket not signed with PAC, service %s failed "
 		    "for delegation to %s for client %s (%s)"
 		    "from %s",
 		    spn, tpn, dpn, cpn, from);

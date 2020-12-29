@@ -1745,8 +1745,12 @@ generate_pac(astgs_request_t r, Key *skey)
 		   r->cname);
 	return ret;
     }
-    if (p == NULL)
-	return 0;
+
+    if (p == NULL) {
+	ret = krb5_pac_init(r->context, &p);
+	if (ret)
+	    return ret;
+    }
 
     ret = _krb5_pac_sign(r->context, p, r->et.authtime,
 			 r->client->entry.principal,
