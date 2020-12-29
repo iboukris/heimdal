@@ -541,7 +541,7 @@ fix_transited_encoding(krb5_context context,
 
 static krb5_error_code
 tgs_make_reply(astgs_request_t r,
-	       krb5_const_principal tgt_name,
+	       krb5_principal tgt_name,
 	       const EncTicketPart *tgt,
 	       const krb5_keyblock *replykey,
 	       int rk_is_subkey,
@@ -959,6 +959,7 @@ tgs_parse_request(astgs_request_t r,
 		  int **cusec,
 		  AuthorizationData **auth_data,
 		  krb5_keyblock **replykey,
+		  Key **header_key,
 		  int *rk_is_subkey)
 {
     krb5_context context = r->context;
@@ -1127,6 +1128,8 @@ next_kvno:
 	krb5_free_error_message(context, msg);
 	goto out;
     }
+
+    *header_key = tkey;
 
     {
 	krb5_authenticator auth;
@@ -1321,6 +1324,7 @@ static krb5_error_code
 tgs_build_reply(astgs_request_t priv,
 		hdb_entry_ex *krbtgt,
 		krb5_enctype krbtgt_etype,
+		Key *tkey_check,
 		const krb5_keyblock *replykey,
 		int rk_is_subkey,
 		krb5_ticket *ticket,
@@ -1362,7 +1366,6 @@ tgs_build_reply(astgs_request_t priv,
     char opt_str[128];
     int signedpath = 0;
 
-    Key *tkey_check;
     Key *tkey_sign;
     int flags = HDB_F_FOR_TGS_REQ;
 
@@ -1668,20 +1671,6 @@ server_lookup:
      * not the same, it's someone that is using a uni-directional trust
      * backward.
      */
-
-    /*
-     * Validate authorization data
-     */
-
-    ret = hdb_enctype2key(context, &krbtgt->entry, NULL, /* XXX use the right kvno! */
-			  krbtgt_etype, &tkey_check);
-    if(ret) {
-	kdc_log(context, config, 4,
-		    "Failed to find key for krbtgt PAC check");
-        _kdc_audit_addreason((kdc_request_t)priv,
-                             "No key for krbtgt PAC check");
-	goto out;
-    }
 
     /* 
      * Now refetch the primary krbtgt, and get the current kvno (the
@@ -2324,6 +2313,7 @@ _kdc_tgs_rep(astgs_request_t r)
     krb5_error_code ret;
     int i = 0;
     const PA_DATA *tgs_req;
+    Key *header_key;
 
     hdb_entry_ex *krbtgt = NULL;
     krb5_ticket *ticket = NULL;
@@ -2360,6 +2350,7 @@ _kdc_tgs_rep(astgs_request_t r)
 			    &csec, &cusec,
 			    &auth_data,
 			    &replykey,
+			    &header_key,
 			    &rk_is_subkey);
     if (ret == HDB_ERR_NOT_FOUND_HERE) {
 	/* kdc_log() is called in tgs_parse_request() */
@@ -2381,6 +2372,7 @@ _kdc_tgs_rep(astgs_request_t r)
     ret = tgs_build_reply(r,
 			  krbtgt,
 			  krbtgt_etype,
+			  header_key,
 			  replykey,
 			  rk_is_subkey,
 			  ticket,
