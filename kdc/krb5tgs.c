@@ -60,10 +60,8 @@ check_PAC(krb5_context context,
 	  hdb_entry_ex *server,
 	  hdb_entry_ex *krbtgt,
 	  const EncryptionKey *server_check_key,
-	  const EncryptionKey *server_sign_key,
-	  const EncryptionKey *krbtgt_sign_key,
 	  EncTicketPart *tkt,
-	  krb5_data *rspac,
+	  krb5_pac *ppac,
 	  int *signedpath)
 {
     AuthorizationData *ad = tkt->authorization_data;
@@ -127,11 +125,10 @@ check_PAC(krb5_context context,
 		 */
 		if (signed_pac) {
 		    *signedpath = 1;
-		    ret = _krb5_pac_sign(context, pac, tkt->authtime,
-					 client_principal,
-					 server_sign_key, krbtgt_sign_key, rspac);
+		    *ppac = pac;
+		} else {
+		    krb5_pac_free(context, pac);
 		}
-		krb5_pac_free(context, pac);
 
 		return ret;
 	    }
@@ -538,6 +535,7 @@ tgs_make_reply(astgs_request_t r,
 	       const krb5_keyblock *replykey,
 	       int rk_is_subkey,
 	       const EncryptionKey *serverkey,
+	       const EncryptionKey *krbtgtkey,
 	       const krb5_keyblock *sessionkey,
 	       krb5_kvno kvno,
 	       AuthorizationData *auth_data,
@@ -546,9 +544,7 @@ tgs_make_reply(astgs_request_t r,
 	       hdb_entry_ex *client,
 	       krb5_principal client_principal,
                const char *tgt_realm,
-	       hdb_entry_ex *krbtgt,
-	       krb5_enctype krbtgt_etype,
-	       const krb5_data *rspac,
+	       krb5_pac mspac,
 	       const METHOD_DATA *enc_pa_data)
 {
     krb5_context context = r->context;
@@ -698,13 +694,20 @@ tgs_make_reply(astgs_request_t r,
      * restrictive authorization data. Policy for unknown authorization types
      * is implementation dependent.
      */
-    if (rspac->length && !et.flags.anonymous) {
+    if (mspac && !et.flags.anonymous) {
+	krb5_data rspac;
+	krb5_data_zero(&rspac);
 	/*
 	 * No not need to filter out the any PAC from the
 	 * auth_data since it's signed by the KDC.
 	 */
+	ret = _krb5_pac_sign(context, mspac, et.authtime, tgt_name, serverkey,
+			     krbtgtkey, &rspac);
+	if (ret)
+	    goto out;
 	ret = _kdc_tkt_add_if_relevant_ad(context, &et,
-					  KRB5_AUTHDATA_WIN2K_PAC, rspac);
+					  KRB5_AUTHDATA_WIN2K_PAC, &rspac);
+	krb5_data_free(&rspac);
 	if (ret)
 	    goto out;
     }
@@ -1330,7 +1333,7 @@ tgs_build_reply(astgs_request_t priv,
     const EncryptionKey *ekey;
     krb5_keyblock sessionkey;
     krb5_kvno kvno;
-    krb5_data rspac;
+    krb5_pac mspac = NULL;
     const char *tgt_realm = /* Realm of TGT issuer */
         krb5_principal_get_realm(context, krbtgt->entry.principal);
     const char *our_realm = /* Realm of this KDC */
@@ -1354,7 +1357,6 @@ tgs_build_reply(astgs_request_t priv,
 
     memset(&sessionkey, 0, sizeof(sessionkey));
     memset(&adtkt, 0, sizeof(adtkt));
-    krb5_data_zero(&rspac);
     memset(&enc_pa_data, 0, sizeof(enc_pa_data));
 
     s = b->sname;
@@ -1812,8 +1814,7 @@ server_lookup:
     ret = check_PAC(context, config, cp, NULL,
 		    client, server, krbtgt,
 		    &tkey_check->key,
-		    ekey, &tkey_sign->key,
-		    tgt, &rspac, &signedpath);
+		    tgt, &mspac, &signedpath);
     if (ret) {
 	const char *msg = krb5_get_error_message(context, ret);
         _kdc_audit_addreason((kdc_request_t)priv, "PAC check failed");
@@ -1973,28 +1974,16 @@ server_lookup:
 		goto out; /* kdc_check_flags() calls _kdc_audit_addreason() */
 
 	    /* If we were about to put a PAC into the ticket, we better fix it to be the right PAC */
-	    if(rspac.data) {
-		krb5_pac p = NULL;
-		krb5_data_free(&rspac);
-		ret = _kdc_pac_generate(context, s4u2self_impersonated_client, &p);
+	    if(mspac) {
+		krb5_pac_free(context, mspac);
+		mspac = NULL;
+		ret = _kdc_pac_generate(context, s4u2self_impersonated_client, &mspac);
 		if (ret) {
                     _kdc_audit_addreason((kdc_request_t)priv,
                                          "KRB5SignedPath missing");
 		    kdc_log(context, config, 4, "PAC generation failed for -- %s",
 			    tpn);
 		    goto out;
-		}
-		if (p != NULL) {
-		    ret = _krb5_pac_sign(context, p, ticket->ticket.authtime,
-					 s4u2self_impersonated_client->entry.principal,
-					 ekey, &tkey_sign->key,
-					 &rspac);
-		    krb5_pac_free(context, p);
-		    if (ret) {
-			kdc_log(context, config, 4, "PAC signing failed for -- %s",
-				tpn);
-			goto out;
-		    }
 		}
 	    }
 
@@ -2131,7 +2120,9 @@ server_lookup:
 	    goto out;
 	}
 
-	krb5_data_free(&rspac);
+	if (mspac)
+	    krb5_pac_free(context, mspac);
+	mspac = NULL;
 
 	/*
 	 * generate the PAC for the user.
@@ -2142,8 +2133,7 @@ server_lookup:
 	ret = check_PAC(context, config, tp, dp,
 			client, server, krbtgt,
 			&clientkey->key,
-			ekey, &tkey_sign->key,
-			&adtkt, &rspac, &ad_signedpath);
+			&adtkt, &mspac, &ad_signedpath);
 	if (ret) {
 	    const char *msg = krb5_get_error_message(context, ret);
             _kdc_audit_addreason((kdc_request_t)priv,
@@ -2255,6 +2245,7 @@ server_lookup:
 			 replykey,
 			 rk_is_subkey,
 			 ekey,
+			 &tkey_sign->key,
 			 &sessionkey,
 			 kvno,
 			 *auth_data,
@@ -2263,9 +2254,7 @@ server_lookup:
 			 client,
 			 cp,
                          tgt_realm,
-			 krbtgt_out,
-			 tkey_sign->key.keytype,
-			 &rspac,
+			 mspac,
 			 &enc_pa_data);
 
 out:
@@ -2275,7 +2264,6 @@ out:
     free(krbtgt_out_n);
     _krb5_free_capath(context, capath);
 
-    krb5_data_free(&rspac);
     krb5_free_keyblock_contents(context, &sessionkey);
     if(krbtgt_out)
 	_kdc_free_ent(context, krbtgt_out);
@@ -2296,6 +2284,9 @@ out:
     free_METHOD_DATA(&enc_pa_data);
 
     free_EncTicketPart(&adtkt);
+
+    if (mspac)
+	krb5_pac_free(context, mspac);
 
     return ret;
 }
