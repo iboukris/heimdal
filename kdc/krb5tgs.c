@@ -47,6 +47,36 @@ get_krbtgt_realm(const PrincipalName *p)
 	return NULL;
 }
 
+static krb5_error_code
+get_pac_kdc_key(krb5_context context,
+		krb5_pac pac,
+		hdb_entry_ex *krbtgt,
+		EncryptionKey **key_out)
+{
+    krb5_error_code ret;
+    krb5_enctype etype;
+    krb5_cksumtype cstype;
+    Key *key;
+
+    *key_out = NULL;
+
+    ret = _pac_get_kdc_checksum_type(context, pac, &cstype);
+    if (ret)
+	return ret;
+
+    ret = krb5_cksumtype_to_enctype(context, cstype, &etype);
+    if (ret)
+	return ret;
+
+    ret = hdb_enctype2key(context, &krbtgt->entry, NULL, etype, &key);
+    if (ret)
+	return ret;
+
+    *key_out = &key->key;
+
+    return 0;
+}
+
 /*
  *
  */
@@ -55,13 +85,12 @@ static krb5_error_code
 check_PAC(krb5_context context,
 	  krb5_kdc_configuration *config,
 	  const krb5_principal client_principal,
-	  const krb5_principal ticket_server,
+	  const krb5_principal server_principal,
 	  const krb5_principal delegated_proxy_principal,
 	  hdb_entry_ex *client,
 	  hdb_entry_ex *server,
 	  hdb_entry_ex *krbtgt,
 	  const EncryptionKey *server_check_key,
-	  const EncryptionKey *krbtgt_check_key,
 	  EncTicketPart *tkt,
 	  krb5_pac *ppac)
 {
@@ -93,6 +122,7 @@ check_PAC(krb5_context context,
 	    if (child.val[j].ad_type == KRB5_AUTHDATA_WIN2K_PAC) {
 		int signed_pac = 0;
 		krb5_pac pac;
+		EncryptionKey *krbtgt_check_key;
 		krb5_data adifr_data = ad->val[i].ad_data;
 		krb5_data pac_data = child.val[j].ad_data;
 
@@ -103,12 +133,18 @@ check_PAC(krb5_context context,
 				     &pac);
 		if (ret) {
 		    free_AuthorizationData(&child);
+		    return ret;
+		}
+
+		ret = get_pac_kdc_key(context, pac, krbtgt, &krbtgt_check_key);
+		if (ret) {
+		    free_AuthorizationData(&child);
 		    krb5_pac_free(context, pac);
 		    return ret;
 		}
 
 		/* Verify ticket-signature */
-		if (!krb5_principal_is_krbtgt(context, ticket_server)) {
+		if (!krb5_principal_is_krbtgt(context, server_principal)) {
 		    static unsigned char single_zero = '\0';
 		    krb5_data recoded_adifr;
 		    krb5_data recoded_tkt;
@@ -152,11 +188,15 @@ check_PAC(krb5_context context,
 			return ret;
 		    }
 		} else {
+		    const char *our_realm, *tgt_realm;
+
+		    our_realm = krb5_principal_get_realm(context, server->entry.principal);
+		    tgt_realm = krb5_principal_get_realm(context, krbtgt->entry.principal);
+
 		    /* We can't verify the KDC signature if the ticket was issued by
 		     * another realm's KDC. */
-		    if (strcmp(krb5_principal_get_realm(context, server->entry.principal),
-			       krb5_principal_get_realm(context, krbtgt->entry.principal)) != 0)
-			    krbtgt_check_key = NULL;
+		    if (strcmp(our_realm, tgt_realm) != 0)
+			krbtgt_check_key = NULL;
 		}
 
 		ret = krb5_pac_verify(context, pac, tkt->authtime,
@@ -1896,7 +1936,6 @@ server_lookup:
     ret = check_PAC(context, config, cp, ticket->server, NULL,
 		    client, server, krbtgt,
 		    &tkey_check->key,
-		    &tkey_check->key,
 		    tgt, &mspac);
     if (ret) {
 	const char *msg = krb5_get_error_message(context, ret);
@@ -2214,7 +2253,7 @@ server_lookup:
 	 */
 	ret = check_PAC(context, config, tp, dp, dp,
 			client, server, krbtgt,
-			&clientkey->key, &tkey_check->key, // XXX
+			&clientkey->key,
 			&adtkt, &mspac);
 	if (ret) {
 	    const char *msg = krb5_get_error_message(context, ret);

@@ -1262,3 +1262,33 @@ out:
 	krb5_storage_free(spdata);
     return ret;
 }
+
+KRB5_LIB_FUNCTION krb5_error_code KRB5_LIB_CALL
+_pac_get_kdc_checksum_type(krb5_context context,
+			   krb5_pac pac,
+			   krb5_cksumtype *cstype)
+{
+    krb5_error_code ret;
+    krb5_storage *sp = NULL;
+    const struct PAC_INFO_BUFFER *sig;
+    uint32_t type = 0;
+
+    sig = pac->privsvr_checksum;
+    if (sig == NULL) {
+	krb5_set_error_message(context, EINVAL, "PAC missing kdc checksum");
+	return EINVAL;
+    }
+
+    sp = krb5_storage_from_mem((char *)pac->data.data + sig->offset_lo,
+			       sig->buffersize);
+    if (sp == NULL)
+	return krb5_enomem(context);
+
+    krb5_storage_set_flags(sp, KRB5_STORAGE_BYTEORDER_LE);
+
+    ret = krb5_ret_uint32(sp, &type);
+    krb5_storage_free(sp);
+
+    *cstype = type;
+    return ret;
+}
